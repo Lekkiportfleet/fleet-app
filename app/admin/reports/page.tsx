@@ -10,6 +10,9 @@ const TYPE_LABEL: Record<string, string> = {
   other: "Other",
 };
 
+type DriverStat = { name: string; spend: number; requestCount: number; approved: number; rejected: number };
+type VehicleStat = { plate: string; total: number; byType: Record<string, number> };
+
 export default async function ReportsPage() {
   const supabase = createClient();
 
@@ -23,11 +26,10 @@ export default async function ReportsPage() {
   const rows = (requests ?? []) as any[];
   const completed = rows.filter((r) => r.status === "completed");
 
-  // Vehicle-wise: total spend + breakdown by category
-  const vehicleMap = new Map<string, { plate: string; total: number; byType: Record<string, number> }>();
+  const vehicleMap = new Map<string, VehicleStat>();
   for (const r of completed) {
     const plate = r.vehicles?.plate_number ?? "Unknown";
-    if (!vehicleMap.has(plate)) vehicleMap.set(plate, { plate, total: 0, byType: {} });
+    if (!vehicleMap.has(plate)) vehicleMap.set(plate, { plate: plate, total: 0, byType: {} });
     const v = vehicleMap.get(plate)!;
     const amount = r.actual_amount ?? 0;
     v.total += amount;
@@ -35,16 +37,14 @@ export default async function ReportsPage() {
   }
   const vehicleWise = Array.from(vehicleMap.values()).sort((a, b) => b.total - a.total);
 
-  // Expense-wise: totals by category across the whole fleet
   const categoryMap = new Map<string, number>();
   for (const r of completed) {
     categoryMap.set(r.type, (categoryMap.get(r.type) ?? 0) + (r.actual_amount ?? 0));
   }
   const expenseWise = Array.from(categoryMap.entries())
-    .map(([type, total]) => ({ type, label: TYPE_LABEL[type] ?? type, total }))
+    .map(([type, total]) => ({ type: type, label: TYPE_LABEL[type] ?? type, total: total }))
     .sort((a, b) => b.total - a.total);
 
-  // Monthly / YTD trend (current calendar year)
   const currentYear = new Date().getFullYear();
   const monthMap = new Map<string, number>();
   for (const r of completed) {
@@ -53,21 +53,17 @@ export default async function ReportsPage() {
     const key = d.toLocaleString("en-US", { month: "short" });
     monthMap.set(key, (monthMap.get(key) ?? 0) + (r.actual_amount ?? 0));
   }
-  const monthOrder = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const monthly = monthOrder
     .filter((m) => monthMap.has(m))
     .map((m) => ({ month: m, total: monthMap.get(m)! }));
   const ytdTotal = monthly.reduce((sum, m) => sum + m.total, 0);
 
-  // Driver-wise: spend, request count, approval vs rejection rate
-  const driverMap = new Map
-    string,
-    { name: string; spend: number; requestCount: number; approved: number; rejected: number }
-  >();
+  const driverMap = new Map<string, DriverStat>();
   for (const r of rows) {
     const name = r.profiles?.full_name ?? "Unknown";
     if (!driverMap.has(name)) {
-      driverMap.set(name, { name, spend: 0, requestCount: 0, approved: 0, rejected: 0 });
+      driverMap.set(name, { name: name, spend: 0, requestCount: 0, approved: 0, rejected: 0 });
     }
     const d = driverMap.get(name)!;
     d.requestCount += 1;
@@ -77,7 +73,6 @@ export default async function ReportsPage() {
   }
   const driverWise = Array.from(driverMap.values()).sort((a, b) => b.spend - a.spend);
 
-  // Raw export rows — one line per completed transaction
   const exportRows = completed.map((r) => ({
     date: new Date(r.updated_at ?? r.created_at).toLocaleDateString(),
     vehicle: r.vehicles?.plate_number ?? "",
