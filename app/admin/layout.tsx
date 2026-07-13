@@ -23,6 +23,9 @@ export default function AdminLayout({
             <Link href="/admin/drivers" className="text-slate-300 hover:text-amber-500">
               Drivers
             </Link>
+            <Link href="/admin/reports" className="text-slate-300 hover:text-amber-500">
+              Reports
+            </Link>
           </nav>
           <SignOutButton />
         </div>
