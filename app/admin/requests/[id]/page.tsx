@@ -70,7 +70,7 @@ export default async function AdminRequestDetailPage({
   return (
     <div className="space-y-6">
       <Link href="/admin/requests" className="text-slate-500 text-sm hover:text-slate-300">
-        ← Back to queue
+        {"← Back to queue"}
       </Link>
 
       <div>
@@ -82,7 +82,6 @@ export default async function AdminRequestDetailPage({
         </p>
       </div>
 
-      {/* Submitted details */}
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-2">
         <Row label="Odometer at request" value={`${r.odometer.toLocaleString()} km`} />
         <Row label="Vehicle's current odometer" value={`${r.vehicles?.current_odometer.toLocaleString()} km`} />
@@ -97,7 +96,6 @@ export default async function AdminRequestDetailPage({
         )}
       </div>
 
-      {/* Photos */}
       {photoUrls.length > 0 && (
         <div>
           <h2 className="text-slate-300 text-sm font-medium mb-2">Photos</h2>
@@ -118,7 +116,6 @@ export default async function AdminRequestDetailPage({
         </div>
       )}
 
-      {/* Vehicle history */}
       <div>
         <h2 className="text-slate-300 text-sm font-medium mb-2">
           Recent history — {r.vehicles?.plate_number}
@@ -143,7 +140,6 @@ export default async function AdminRequestDetailPage({
         </div>
       </div>
 
-      {/* Actions */}
       {isOpen && (
         <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4">
           <h2 className="text-slate-300 text-sm font-medium">Review this request</h2>
@@ -186,3 +182,20 @@ export default async function AdminRequestDetailPage({
               type="submit"
               className="w-full rounded-md border border-[#B3432E] text-[#E07856] font-medium py-2.5"
             >
+              Reject
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between text-sm">
+      <span className="text-slate-500">{label}</span>
+      <span className="text-slate-200 text-right max-w-[60%]">{value}</span>
+    </div>
+  );
+}
