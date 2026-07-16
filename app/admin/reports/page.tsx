@@ -19,7 +19,7 @@ export default async function ReportsPage() {
   const { data: requests } = await supabase
     .from("requests")
     .select(
-      "id, type, status, actual_amount, estimated_amount, created_at, updated_at, vehicles(plate_number), profiles(full_name)"
+      "id, type, status, actual_amount, estimated_amount, odometer, created_at, updated_at, vehicles(plate_number), profiles(full_name)"
     )
     .order("created_at", { ascending: false });
 
@@ -81,6 +81,18 @@ export default async function ReportsPage() {
     amount: r.actual_amount ?? 0,
   }));
 
+  // Full history — every request, any status, for the new browsable table
+  const allHistory = rows.map((r) => ({
+    id: r.id as string,
+    date: new Date(r.created_at).toLocaleDateString(),
+    vehicle: r.vehicles?.plate_number ?? "",
+    driver: r.profiles?.full_name ?? "",
+    type: TYPE_LABEL[r.type] ?? r.type,
+    status: r.status as string,
+    odometer: r.odometer as number,
+    amount: (r.actual_amount ?? r.estimated_amount ?? 0) as number,
+  }));
+
   return (
     <ReportView
       vehicleWise={vehicleWise}
@@ -90,6 +102,7 @@ export default async function ReportsPage() {
       driverWise={driverWise}
       exportRows={exportRows}
       typeLabels={TYPE_LABEL}
+      allHistory={allHistory}
     />
   );
 }
