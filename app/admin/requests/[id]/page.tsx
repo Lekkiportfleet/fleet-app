@@ -57,13 +57,52 @@ export default async function AdminRequestDetailPage({
     })
   );
 
+  // History now filtered to the SAME request type — a fuel request only
+  // shows past fuel history, a tyre request only shows past tyre history.
   const { data: history } = await supabase
     .from("requests")
-    .select("id, type, status, estimated_amount, actual_amount, actual_vendor, created_at")
+    .select("id, type, status, estimated_amount, actual_amount, actual_vendor, odometer, created_at")
     .eq("vehicle_id", r.vehicle_id)
+    .eq("type", r.type)
     .neq("id", r.id)
     .order("created_at", { ascending: false })
     .limit(5);
+
+  // Fuel-specific efficiency context: compare this request's odometer against
+  // the last COMPLETED fuel fill for the same vehicle.
+  let fuelContext: {
+    lastOdometer: number;
+    lastDate: string;
+    kmSince: number;
+    litres: number | null;
+    kmPerLitre: number | null;
+  } | null = null;
+
+  if (r.type === "fuel") {
+    const { data: lastFuel } = await supabase
+      .from("requests")
+      .select("odometer, updated_at, created_at")
+      .eq("vehicle_id", r.vehicle_id)
+      .eq("type", "fuel")
+      .eq("status", "completed")
+      .neq("id", r.id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastFuel) {
+      const kmSince = r.odometer - lastFuel.odometer;
+      const litresRaw = r.details?.litres;
+      const litres = litresRaw ? Number(litresRaw) : null;
+      fuelContext = {
+        lastOdometer: lastFuel.odometer,
+        lastDate: lastFuel.updated_at ?? lastFuel.created_at,
+        kmSince,
+        litres,
+        kmPerLitre: litres && litres > 0 ? kmSince / litres : null,
+      };
+    }
+  }
 
   const isOpen = r.status === "pending" || r.status === "needs_info";
 
@@ -82,6 +121,7 @@ export default async function AdminRequestDetailPage({
         </p>
       </div>
 
+      {/* Submitted details */}
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-2">
         <Row label="Odometer at request" value={`${r.odometer.toLocaleString()} km`} />
         <Row label="Vehicle's current odometer" value={`${r.vehicles?.current_odometer.toLocaleString()} km`} />
@@ -96,6 +136,48 @@ export default async function AdminRequestDetailPage({
         )}
       </div>
 
+      {/* Fuel efficiency context */}
+      {r.type === "fuel" && (
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
+          <h2 className="text-slate-300 text-sm font-medium mb-3">Mileage check</h2>
+          {fuelContext ? (
+            <div className="space-y-2">
+              <Row
+                label="Last fuel fill odometer"
+                value={`${fuelContext.lastOdometer.toLocaleString()} km · ${new Date(
+                  fuelContext.lastDate
+                ).toLocaleDateString()}`}
+              />
+              <Row label="This request's odometer" value={`${r.odometer.toLocaleString()} km`} />
+              <Row
+                label="Distance since last fill"
+                value={`${fuelContext.kmSince.toLocaleString()} km`}
+              />
+              {fuelContext.kmPerLitre !== null ? (
+                <Row
+                  label="Approx. fuel economy"
+                  value={`${fuelContext.kmPerLitre.toFixed(1)} km/litre`}
+                />
+              ) : (
+                <p className="text-slate-500 text-xs pt-1">
+                  Litres weren't recorded on this request, so fuel economy can't be calculated.
+                </p>
+              )}
+              {fuelContext.kmSince < 0 && (
+                <p className="text-[#E07856] text-xs pt-1">
+                  ⚠ This odometer reading is lower than the last recorded fill — worth double-checking.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-slate-500 text-sm">
+              No previous completed fuel fill on record for this vehicle yet — nothing to compare against.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Photos */}
       {photoUrls.length > 0 && (
         <div>
           <h2 className="text-slate-300 text-sm font-medium mb-2">Photos</h2>
@@ -116,21 +198,24 @@ export default async function AdminRequestDetailPage({
         </div>
       )}
 
+      {/* Vehicle history — now filtered to this request's type */}
       <div>
         <h2 className="text-slate-300 text-sm font-medium mb-2">
-          Recent history — {r.vehicles?.plate_number}
+          Recent {TYPE_LABEL[r.type] ?? r.type} history — {r.vehicles?.plate_number}
         </h2>
         <div className="space-y-2">
           {history?.length === 0 && (
-            <p className="text-slate-500 text-sm">No previous transactions for this vehicle.</p>
+            <p className="text-slate-500 text-sm">
+              No previous {(TYPE_LABEL[r.type] ?? r.type).toLowerCase()} transactions for this vehicle.
+            </p>
           )}
           {history?.map((h) => (
             <div
               key={h.id}
               className="bg-slate-900 border border-slate-800 rounded-lg px-4 py-3 flex items-center justify-between text-sm"
             >
-              <span className="text-slate-300 capitalize">{h.type.replace("_", " ")}</span>
               <span className="text-slate-500">{new Date(h.created_at).toLocaleDateString()}</span>
+              <span className="text-slate-400">{h.odometer?.toLocaleString()} km</span>
               <span className="text-slate-400">
                 {(h.actual_amount ?? h.estimated_amount)?.toLocaleString() ?? "—"}
               </span>
@@ -140,6 +225,7 @@ export default async function AdminRequestDetailPage({
         </div>
       </div>
 
+      {/* Actions */}
       {isOpen && (
         <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4">
           <h2 className="text-slate-300 text-sm font-medium">Review this request</h2>
