@@ -1,5 +1,8 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import Link from "next/link";
+
 function downloadCsv(filename: string, rows: Record<string, any>[]) {
   if (rows.length === 0) return;
   const headers = Object.keys(rows[0]);
@@ -18,6 +21,26 @@ function downloadCsv(filename: string, rows: Record<string, any>[]) {
   URL.revokeObjectURL(url);
 }
 
+const STATUS_COLOR: Record<string, string> = {
+  pending: "text-slate-400 border-slate-600",
+  needs_info: "text-amber-400 border-amber-600",
+  approved: "text-ok border-[#2E7D5B]",
+  rejected: "text-danger border-[#B3432E]",
+  procurement_in_progress: "text-amber-400 border-amber-600",
+  completed: "text-ok border-[#2E7D5B]",
+};
+
+type HistoryRow = {
+  id: string;
+  date: string;
+  vehicle: string;
+  driver: string;
+  type: string;
+  status: string;
+  odometer: number;
+  amount: number;
+};
+
 export default function ReportView({
   vehicleWise,
   expenseWise,
@@ -26,6 +49,7 @@ export default function ReportView({
   driverWise,
   exportRows,
   typeLabels,
+  allHistory,
 }: {
   vehicleWise: { plate: string; total: number; byType: Record<string, number> }[];
   expenseWise: { type: string; label: string; total: number }[];
@@ -34,21 +58,37 @@ export default function ReportView({
   driverWise: { name: string; spend: number; requestCount: number; approved: number; rejected: number }[];
   exportRows: { date: string; vehicle: string; driver: string; type: string; amount: number }[];
   typeLabels: Record<string, string>;
+  allHistory: HistoryRow[];
 }) {
   const maxMonthly = Math.max(1, ...monthly.map((m) => m.total));
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const filteredHistory = useMemo(() => {
+    return allHistory.filter((h) => {
+      if (statusFilter !== "all" && h.status !== statusFilter) return false;
+      if (search.trim()) {
+        const q = search.trim().toLowerCase();
+        const haystack = `${h.vehicle} ${h.driver} ${h.type}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [allHistory, search, statusFilter]);
 
   return (
     <div className="space-y-10">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl text-slate-100 mb-1">Reports</h1>
-          <p className="text-slate-500 text-sm">Based on completed transactions</p>
+          <p className="text-slate-500 text-sm">Summary figures below are based on completed transactions</p>
         </div>
         <button
           onClick={() => downloadCsv("fleet-transactions.csv", exportRows)}
           className="text-sm rounded-md border border-slate-700 text-slate-300 px-4 py-2 hover:border-amber-500 hover:text-amber-400 transition-colors"
         >
-          Export all to CSV
+          Export completed to CSV
         </button>
       </div>
 
@@ -195,6 +235,85 @@ export default function ReportView({
             ))}
           </div>
         )}
+      </section>
+
+      {/* Full browsable history — every request, any status */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-slate-300 text-sm font-medium">Full history</h2>
+            <p className="text-slate-500 text-xs mt-0.5">
+              {filteredHistory.length} of {allHistory.length} requests
+            </p>
+          </div>
+          <button
+            onClick={() =>
+              downloadCsv(
+                "full-history.csv",
+                filteredHistory.map((h) => ({
+                  date: h.date,
+                  vehicle: h.vehicle,
+                  driver: h.driver,
+                  type: h.type,
+                  status: h.status,
+                  odometer: h.odometer,
+                  amount: h.amount,
+                }))
+              )
+            }
+            className="text-xs text-amber-500 hover:text-amber-400"
+          >
+            Export shown to CSV
+          </button>
+        </div>
+
+        <div className="flex gap-3 mb-3">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by vehicle, driver, or type"
+            className="flex-1 rounded-md bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-amber-500"
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-md bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 outline-none focus:border-amber-500"
+          >
+            <option value="all">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="needs_info">Needs info</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+
+        <div className="space-y-2">
+          {filteredHistory.length === 0 && (
+            <p className="text-slate-500 text-sm text-center py-8">No matching requests.</p>
+          )}
+          {filteredHistory.map((h) => (
+            <Link
+              key={h.id}
+              href={`/admin/requests/${h.id}`}
+              className="block bg-slate-900 border border-slate-800 rounded-lg px-4 py-3 hover:border-amber-500 transition-colors"
+            >
+              <div className="flex items-center justify-between text-sm">
+                <div>
+                  <span className="text-slate-100 font-medium">{h.type}</span>
+                  <span className="text-slate-500"> · {h.vehicle}</span>
+                </div>
+                <span className={`text-xs border rounded-full px-2.5 py-1 ${STATUS_COLOR[h.status]}`}>
+                  {h.status.replace("_", " ")}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
+                <span>{h.driver} · {h.date}</span>
+                <span>{h.odometer?.toLocaleString()} km · {h.amount ? h.amount.toLocaleString() : "—"}</span>
+              </div>
+            </Link>
+          ))}
+        </div>
       </section>
     </div>
   );
